@@ -23,6 +23,7 @@ import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.DepthWalk;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalkUtils;
 
 /**
  * Allow to compute git depth, in term of commit distance between several commits.
@@ -83,8 +84,8 @@ public interface DistanceCalculator {
                     if (commit.getId().getName().equals(target.getName())) {
                         // we found it
                         if (commit instanceof DepthWalk.Commit) {
-                            DepthWalk.Commit dwc = (DepthWalk.Commit) commit;
-                            return Optional.of(Integer.valueOf(dwc.getDepth()));
+                            return Optional.of(
+                                RevWalkUtils.count(walk, walk.parseCommit(startId), walk.parseCommit(target)));
                         } else {
                             throw new IllegalStateException(String.format(
                                     "implementation of %s or jgit internal has been incorrectly changed",
