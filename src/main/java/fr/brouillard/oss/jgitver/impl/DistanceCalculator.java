@@ -16,14 +16,16 @@
 package fr.brouillard.oss.jgitver.impl;
 
 import java.io.IOException;
-import java.util.Iterator;
+import java.util.ArrayDeque;
+import java.util.HashSet;
 import java.util.Optional;
 
+import java.util.Queue;
+import java.util.Set;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.revwalk.DepthWalk;
 import org.eclipse.jgit.revwalk.RevCommit;
-import org.eclipse.jgit.revwalk.RevWalkUtils;
+import org.eclipse.jgit.revwalk.RevWalk;
 
 /**
  * Allow to compute git depth, in term of commit distance between several commits.
@@ -69,40 +71,72 @@ public interface DistanceCalculator {
             this.maxDepth = maxDepth;
         }
 
+      /**
+       * Calculates the distance (number of commits) between the given parent and child commits.
+       *
+       * @return distance (number of commits) between the given commits
+       * @see <a href="https://github.com/mdonoughe/jgit-describe/blob/master/src/org/mdonoughe/JGitDescribeTask.java">mdonoughe/jgit-describe/blob/master/src/org/mdonoughe/JGitDescribeTask.java</a>
+       */
         public Optional<Integer> distanceTo(ObjectId target) {
-            DepthWalk.RevWalk walk = null;
-            try {
-                walk = new DepthWalk.RevWalk(repository, maxDepth);
-                RevCommit startCommit = walk.parseCommit(startId);
-                walk.markRoot(startCommit);
-                walk.setRetainBody(false);
+            try (final RevWalk revWalk = new RevWalk(repository)) {
+                revWalk.markStart(revWalk.parseCommit(startId));
 
-                Iterator<? extends RevCommit> commitIterator = walk.iterator();
+                Set<ObjectId> seena = new HashSet<>();
+                Set<ObjectId> seenb = new HashSet<>();
+                Queue<RevCommit> q = new ArrayDeque<>();
 
-                while (commitIterator.hasNext()) {
-                    RevCommit commit = commitIterator.next();
-                    if (commit.getId().getName().equals(target.getName())) {
-                        // we found it
-                        if (commit instanceof DepthWalk.Commit) {
-                            return Optional.of(
-                                RevWalkUtils.count(walk, walk.parseCommit(startId), walk.parseCommit(target)));
-                        } else {
-                            throw new IllegalStateException(String.format(
-                                    "implementation of %s or jgit internal has been incorrectly changed",
-                                    DepthWalkDistanceCalculator.class.getSimpleName()
-                            ));
+                q.add(revWalk.parseCommit(startId));
+                int distance = 0;
+
+                while (q.size() > 0) {
+                    RevCommit commit = q.remove();
+                    ObjectId commitId = commit.getId();
+
+                    if (seena.contains(commitId)) {
+                        continue;
+                    }
+                    seena.add(commitId);
+
+                    if (target.equals(commitId)) {
+                        // don't consider commits that are included in this commit
+                        seeAllParents(revWalk, commit, seenb);
+                        // remove things we shouldn't have included
+                        for (ObjectId oid : seenb) {
+                            if (seena.contains(oid)) {
+                                distance--;
+                            }
+                        }
+                        seena.addAll(seenb);
+                        continue;
+                    }
+
+                    for (ObjectId oid : commit.getParents()) {
+                        if (!seena.contains(oid)) {
+                            q.add(revWalk.parseCommit(oid));
                         }
                     }
+                    distance++;
                 }
-            } catch (IOException ignore) {
-                ignore.printStackTrace();
-            } finally {
-                if (walk != null) {
-                    walk.dispose();
-                    walk.close();
+                return Optional.of(distance);
+            } catch (Exception e) {
+                throw new RuntimeException(String.format("Unable to calculate distance between [%s] and [%s]", startId, target), e);
+            }
+        }
+
+        private void seeAllParents(RevWalk revWalk, RevCommit child, Set<ObjectId> seen) throws IOException {
+            Queue<RevCommit> q = new ArrayDeque<>();
+            q.add(child);
+
+            while (q.size() > 0) {
+                RevCommit commit = q.remove();
+                for (ObjectId oid : commit.getParents()) {
+                    if (seen.contains(oid)) {
+                        continue;
+                    }
+                    seen.add(oid);
+                    q.add(revWalk.parseCommit(oid));
                 }
             }
-            return Optional.empty();
         }
     }
 }

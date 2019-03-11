@@ -27,14 +27,12 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.Iterator;
-import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
@@ -394,7 +392,6 @@ public class GitVersionCalculatorImpl implements GitVersionCalculator {
         }
 
         ObjectId baseCommitId = findBaseCommitId(headId, reachableTags, lookupPolicy, strategy);
-        Set<Commit> commits = new LinkedHashSet<>();
 
         DistanceCalculator distanceCalculator = DistanceCalculator.create(headId, repository, maxDepth);
         if (headId.getName().equals(baseCommitId.getName())) {
@@ -411,7 +408,7 @@ public class GitVersionCalculatorImpl implements GitVersionCalculator {
         return reachableTags
                 .stream()
                 .filter(r -> GitUtils.isAnnotated(r))
-                .collect(Collectors.toCollection(ArrayList<Ref>::new));
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     private ObjectId findBaseCommitId(ObjectId headId, List<Ref> reachableTags, LookupPolicy lookupPolicy, VersionStrategy strategy) {
@@ -460,7 +457,7 @@ public class GitVersionCalculatorImpl implements GitVersionCalculator {
             return reachableTags.stream()
                     .map(r -> new Pair<Ref, Date>(r, dateExtractor.dateOfRef(r)))
                     .max(Comparator.comparing(p -> ((Date) p.getRight())))
-                    .map(p -> (Ref) p.getLeft())
+                    .map(p -> p.getLeft())
                     .map(refToObjectIdFunction)
                     .orElseThrow(() -> new IllegalStateException(String.format("could not find most recent tag")));
         }
